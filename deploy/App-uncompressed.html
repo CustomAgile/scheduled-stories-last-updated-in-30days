@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scheduled Stories updated in last 60 days</title>
+
+    <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function () {
+                Ext.define('CustomApp', {
+    extend: 'Rally.app.App',
+    componentCls: 'app',
+    launch: function() {
+        var millisecondsInDay = 86400000;
+        var lookback = 30;
+        var currentDate = new Date();
+        var startDate = new Date(currentDate - millisecondsInDay*lookback); 
+        var startDateUTC = startDate.toISOString();
+        
+        var stories = Ext.create('Rally.data.wsapi.Store', {
+            model: 'UserStory',
+            fetch: ['Iteration','FormattedID','Name','Project'],
+            filters: [
+                {
+		property: 'LastUpdateDate',
+		operator: '>',
+		value: startDateUTC
+                },
+                {
+		property: 'Iteration',
+		operator: '!=',
+		value: null
+                }
+            ]
+        });
+        
+        stories.load().then({
+            success: this._onStoriesLoaded,
+            scope: this
+        }).then({
+            success: function(results) {
+                this._makeGrid(results);
+            },
+            failure:function(error){
+                console.log('oh noes!');
+            },
+            scope:this
+        }); 
+    },
+    _onStoriesLoaded:function(stories){
+        var promises = [];
+        var storyObj = {};
+        return Rally.data.ModelFactory.getModel({
+            type: 'Iteration'
+        }).then({
+            success: function(model) {
+                return Deft.Promise.all(_.map(stories, function(story) {
+                    var ref = story.get('Iteration')._ref;
+                    var oid = Rally.util.Ref.getOidFromRef(ref);
+                    return model.load(oid, {
+                        fetch: ['Name','StartDate','EndDate']
+                    }).then({
+                        success: function(iteration) {
+                            return {
+                                "FormattedID"   : story.get('FormattedID'),
+                                "Name"          : story.get('Name'),
+                                "Project"       : story.get('Project')._refObjectName,
+                                "IterationName" : iteration.get('Name'),
+                                "StartDate"     : iteration.get('StartDate'),
+                                "EndDate"       : iteration.get('EndDate')
+                            };
+                        },
+                        scope: this
+                    });
+                }));
+            },
+            scope: this
+        });   
+    },
+    _makeGrid:function(results){
+        var store = Ext.create('Rally.data.custom.Store', {
+            data: results,
+            groupField: 'IterationName',
+            pageSize: 1000
+        });
+        var grid = Ext.create('Rally.ui.grid.Grid', {
+            itemId: 'storyGrid',
+            store: store,
+            features: [{ftype:'grouping'}],
+            columnCfgs: [
+                {
+                    text: 'Formatted ID', dataIndex: 'FormattedID'//, xtype: 'templatecolumn',
+                    //tpl: Ext.create('Rally.ui.renderer.template.FormattedIDTemplate')
+                },
+                {
+                    text: 'Name', dataIndex: 'Name'
+                },
+                {
+                    text: 'Start Date', dataIndex: 'StartDate', width: 250
+                },
+                {
+                    text: 'End Date', dataIndex: 'EndDate',width: 250
+                },
+                {
+                    text: 'Project', dataIndex: 'Project'
+                }
+            ]
+        });
+
+        this.add(grid);
+    }
+});
+
+            Rally.launchApp('CustomApp', {
+                name:"Scheduled Stories updated in last 60 days",
+	            parentRepos:""
+            });
+
+        });
+    </script>
+
+
+    <style type="text/css">
+        .app {
+  /* Add app styles here */
+}
+
+    </style>
+</head>
+<body>
+</body>
+</html>
